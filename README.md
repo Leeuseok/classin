@@ -33,7 +33,7 @@
 ---
 
 ## 🖼 화면 구성
-### [화면 구성](https://github.com/ejeonghun/UniVersus_flutter/wiki/%ED%99%94%EB%A9%B4%EA%B5%AC%EC%84%B1)
+
 
 ## 🎨 Figma
-[![Figma](https://github.com/ejeonghun/UniVersus_flutter/assets/41509711/25fe0015-7e59-4e24-9867-0fcea73a5692)](https://www.figma.com/design/ocfUBH103sL1oiMiJ07xtn/CLASSIN?node-id=0-1&t=G3pPCZ1SQ7KHW0pv-1)
+https://url.kr/21rlo8
