@@ -27,10 +27,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final supabase = Supabase.instance.client;
   Timer? timer;
   bool _isDisposed = false;
-  bool _imagesLoaded = false;  // 이미지 로딩 상태 체크
+  bool _imagesLoaded = false; // 이미지 로딩 상태 체크
 
   static final LatLng companyLatLng = LatLng(
-    33.87129989814521, // 위도
+    35.87129989814521, // 위도
     128.60418094698616, // 경도
   );
 
@@ -40,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
   );
 
   static final Circle circle = Circle(
-    circleId: CircleId('choolCheckCircle'),
+    circleId: CircleId('schoolCheckCircle'),
     center: companyLatLng,
     fillColor: Colors.blue.withOpacity(0.5),
     radius: 100,
@@ -49,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   );
 
   String currentTime = '';
+  final String professorEmail = 'dndntjr12@g.yju.ac.kr'; // 교수님의 이메일 주소
 
   @override
   void initState() {
@@ -81,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       timer?.cancel();
       await supabase.auth.signOut();
-      
+
       if (!mounted) return;
 
       await Navigator.of(context).pushAndRemoveUntil(
@@ -91,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       print('로그아웃 에러: $e');
       if (!mounted) return;
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('로그아웃에 실패했습니다: $e')),
       );
@@ -106,41 +107,47 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      final response = await supabase.from('attendance').insert({
+      // 데이터 저장 전에 로그 출력
+      print('저장할 데이터: ${{
         'user_id': user.id,
         'user_email': widget.userEmail,
         'user_name': widget.userName,
         'location_latitude': latitude,
         'location_longitude': longitude,
         'check_in_time': DateTime.now().toIso8601String(),
-      }).select();
+      }}');
 
-      print('출석 저장 성공: $response');
-      
-      // 이메일 전송 
-      final emailResponse = await supabase.functions.invoke(
-        'send-attendance-email',
-        body: {
-          'userEmail': widget.userEmail,
-          'userName': widget.userName,
-          'checkInTime': DateTime.now().toIso8601String(),
-        },
-      );
-      
-      print('이메일 전송 결과: ${emailResponse.data}');
-      
-      if (!mounted) return;
+      final response = await supabase.from('attendance').insert({
+        'user_id': user.id,
+        'user_email': user.email, // 여기서 Supabase 사용자 이메일 사용
+        'user_name': widget.userName,
+        'location_latitude': latitude,
+        'location_longitude': longitude,
+        'check_in_time': DateTime.now().toIso8601String(),
+      }).execute();
 
-      // 성공 메시지 표시
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('출석이 완료되었습니다.')),
-      );
+      print('출석 저장 응답: $response');
+
+      if (response.error != null) {
+        print('출석 저장 실패: ${response.error!.message}');
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('출석 저장에 실패했습니다: ${response.error!.message}')),
+        );
+      } else {
+        // 이메일 전송 함수 호출
+        await sendWelcomeEmail(widget.userName);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('출석이 완료되었습니다.')),
+        );
+      }
     } catch (e) {
-      print('출석 저장 실패: $e');
+      print('출석 저장 중 예외 발생: $e');
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('출석 저장에 실패했습니다. 다시 시도해주세요.')),
+        SnackBar(content: Text('출석 저장에 실패했습니다. 상세 오류: $e')),
       );
     }
   }
@@ -149,10 +156,30 @@ class _HomeScreenState extends State<HomeScreen> {
     return DateFormat('HH : mm : ss').format(time);
   }
 
+  Future<void> sendWelcomeEmail(String userName) async {
+    String username = 'dntjr4646@gmail.com'; // 발신자 이메일
+    String password = 'icyh cfpp oitk hmms'; // 생성된 앱 비밀번호
+
+    final smtpServer = gmail(username, password); // Gmail SMTP 서버 사용
+
+    final message = Message()
+      ..from = Address(username, 'CLASS IN') // 발신자 정보
+      ..recipients.add(professorEmail) // 교수님 이메일
+      ..subject = 'CLASS IN'
+      ..text = '학생 $userName의 출석이 완료되었습니다.\n출석 시간: $currentTime';
+
+    try {
+      final sendReport = await send(message, smtpServer);
+      print('이메일 전송 성공: ${sendReport.toString()}');
+    } catch (e) {
+      print('이메일 전송 실패: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    
+
     return WillPopScope(
       onWillPop: () async => false,
       child: Scaffold(
@@ -192,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 );
-                
+
                 if (confirm == true) {
                   await _handleSignOut();
                 }
@@ -201,103 +228,104 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         body: FutureBuilder<String>(
-          future: checkPermission(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData &&
-                snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
-            }
+            future: checkPermission(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData &&
+                  snapshot.connectionState == ConnectionState.waiting) {
+                return Center(child: CircularProgressIndicator());
+              }
 
-            if (snapshot.data == '위치 권한이 허가 되었습니다.') {
-              return Column(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: GoogleMap(
-                      initialCameraPosition: CameraPosition(
-                        target: companyLatLng,
-                        zoom: 16,
-                      ),
-                      myLocationEnabled: true,
-                      markers: Set.from([marker]),
-                      circles: Set.from([circle]),
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _formatTime(now),
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 55,
-                            fontFamily: 'LAB디지털',
-                          ),
+              if (snapshot.data == '위치 권한이 허가 되었습니다.') {
+                return Column(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: GoogleMap(
+                        initialCameraPosition: CameraPosition(
+                          target: companyLatLng,
+                          zoom: 16,
                         ),
-                        const SizedBox(height: 20.0),
-                        ElevatedButton(
-                          onPressed: () async {
-                            final curPosition = await Geolocator.getCurrentPosition();
+                        myLocationEnabled: true,
+                        markers: Set.from([marker]),
+                        circles: Set.from([circle]),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _formatTime(now),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 55,
+                              fontFamily: 'LAB디지털',
+                            ),
+                          ),
+                          const SizedBox(height: 20.0),
+                          ElevatedButton(
+                            onPressed: () async {
+                              final curPosition =
+                                  await Geolocator.getCurrentPosition();
 
-                            final distance = Geolocator.distanceBetween(
-                              curPosition.latitude,
-                              curPosition.longitude,
-                              companyLatLng.latitude,
-                              companyLatLng.longitude,
-                            );
-
-                            if (!mounted) return;
-
-                            if (distance < 100) {
-                              await saveAttendance(
+                              final distance = Geolocator.distanceBetween(
                                 curPosition.latitude,
                                 curPosition.longitude,
+                                companyLatLng.latitude,
+                                companyLatLng.longitude,
                               );
-                              _showAttendanceSuccessDialog();
-                            } else {
-                              // 출석 실패 다이얼로그 표시
-                              showCupertinoDialog(
-                                context: context,
-                                builder: (BuildContext context) {
-                                  return CupertinoAlertDialog(
-                                    title: const Text('출석 실패'),
-                                    content: Text(
-                                      '출석 가능 지역이 아닙니다.',
-                                    ),
-                                    actions: [
-                                      CupertinoDialogAction(
-                                        onPressed: () {
-                                          Navigator.of(context).pop();
-                                        },
-                                        child: const Text('확인'),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              );
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            shape: const CircleBorder(),
-                          ),
-                          child: const Icon(
-                            Icons.check_circle,
-                            size: 100.0,
-                            color: Color(0xFF2DC193),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }
 
-            return Center(child: Text(snapshot.data.toString()));
-          }),
+                              if (!mounted) return;
+
+                              if (distance < 100) {
+                                await saveAttendance(
+                                  curPosition.latitude,
+                                  curPosition.longitude,
+                                );
+                                _showAttendanceSuccessDialog();
+                              } else {
+                                // 출석 실패 다이얼로그 표시
+                                showCupertinoDialog(
+                                  context: context,
+                                  builder: (BuildContext context) {
+                                    return CupertinoAlertDialog(
+                                      title: const Text('출석 실패'),
+                                      content: Text(
+                                        '출석 가능 지역이 아닙니다.',
+                                      ),
+                                      actions: [
+                                        CupertinoDialogAction(
+                                          onPressed: () {
+                                            Navigator.of(context).pop();
+                                          },
+                                          child: const Text('확인'),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              shape: const CircleBorder(),
+                            ),
+                            child: const Icon(
+                              Icons.check_circle,
+                              size: 100.0,
+                              color: Color(0xFF2DC193),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Center(child: Text(snapshot.data.toString()));
+            }),
       ),
     );
   }
@@ -323,7 +351,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-
+extension on PostgrestResponse {
+  get error => null;
+}
 
 Future<String> checkPermission() async {
   final isLocationEnabled = await Geolocator.isLocationServiceEnabled();
